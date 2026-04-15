@@ -11,5 +11,5 @@ import com.hospital.control.model.Enfemeros;
 public interface EnfermerosRepository extends JpaRepository<Enfemeros, Integer> {
     List<Enfemeros> findByNombre(String nombre); 
     List<Enfemeros> findById(int id);
-
+    
 }

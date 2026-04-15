@@ -17,8 +17,8 @@ public class Varios extends Persona {
         this.piso = piso;
     }
 
-    public Varios(int id, String nombre, String apellido, String piso) {
-        super(id, nombre, apellido);
+    public Varios(String nombre, String apellido, String piso) {
+        super(nombre, apellido);
         this.piso = piso;
     }
 

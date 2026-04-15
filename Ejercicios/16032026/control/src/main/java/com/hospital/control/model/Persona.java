@@ -23,7 +23,14 @@ public class Persona {
     @Column(name = "apellido", nullable = false, length = 50)
     private String apellido;
 
+    public Persona(String nombre, String apellido) {
+        this.nombre = nombre;
+        this.apellido = apellido;
+    }
+
     public Persona() {
     }
+
+    
     
 }

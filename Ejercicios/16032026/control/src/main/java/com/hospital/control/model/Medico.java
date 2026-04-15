@@ -17,8 +17,8 @@ public class Medico extends Persona {
         this.gerencia = gerencia;
     }
 
-    public Medico(int id, String nombre, String apellido, String gerencia) {
-        super(id, nombre, apellido);
+    public Medico(String nombre, String apellido, String gerencia) {
+        super(nombre, apellido);
         this.gerencia = gerencia;
     }
 

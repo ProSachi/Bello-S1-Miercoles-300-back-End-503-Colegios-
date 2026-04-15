@@ -17,8 +17,8 @@ public class Enfemeros extends Persona{
         this.especialidad = especialidad;
     }
 
-    public Enfemeros(int id, String nombre, String apellido, String especialidad) {
-        super(id, nombre, apellido);
+    public Enfemeros(String nombre, String apellido, String especialidad) {
+        super(nombre, apellido);
         this.especialidad = especialidad;
     }
 
