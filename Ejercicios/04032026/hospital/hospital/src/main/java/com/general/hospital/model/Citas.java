@@ -1,38 +1,15 @@
 package com.general.hospital.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.NoArgsConstructor;
 
-@AllArgsConstructor
-@NoArgsConstructor
-@Table(name = "appointment")
 public class Citas {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private String idcita;
-
-    @Column(name = "date", nullable = false, length = 15)
     private String fecha;
-
-    @Column(name = "hour", nullable = false, length = 10)
     private String hora;
-
-    @Column(name = "place", nullable = false, length = 250)
     private String lugar;
-
-    @Column(name = "medic", nullable = false, length = 70)
     private String medico;
 
-   /*  @ManyToOne
-    @JoinColumn(name = "fk_pacientecitas")
-    private Paciente paciente;
- */
+
     public String getIdcita() {
         return idcita;
     }

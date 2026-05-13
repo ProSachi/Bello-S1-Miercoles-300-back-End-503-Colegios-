@@ -11,25 +11,13 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 @Table(name = "pacientes")
-public class Paciente {
+public class User {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private String idpaciente;
-
-    @Column(name = "name", nullable = false, length = 60)
     private String nombre;
-
-    @Column(name = "age", nullable = false, length = 60)
     private String edad;
-
-    @Column(name = "document", nullable = false, length = 60, unique = true)
     private String documento;
-
-    @Column(name = "email", length = 60)
     private String correo;
-
-    @Column(name = "rh", nullable = false, length = 60)
     private String rh;
 
 /*     @OneToMany(mappedBy = "departamento", cascade = CascadeType.ALL)
