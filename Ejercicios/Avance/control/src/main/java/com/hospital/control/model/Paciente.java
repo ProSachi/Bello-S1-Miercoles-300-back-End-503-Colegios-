@@ -1,9 +1,10 @@
 package com.hospital.control.model;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +25,6 @@ public class Paciente extends Persona {
   @JoinColumn(name = "medico_id")
   private Medico medico;
 
-  @ManyToMany(mappedBy = "pacientes")
-  private List<Medicamento> medicamentos = new ArrayList<>();
+  @OneToMany(mappedBy = "paciente", cascade = CascadeType.ALL)
+  private List<Prescripcion> prescripciones = new ArrayList<>();
 }

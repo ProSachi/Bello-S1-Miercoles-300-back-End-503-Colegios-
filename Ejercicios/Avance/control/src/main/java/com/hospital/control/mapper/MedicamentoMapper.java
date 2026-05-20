@@ -25,7 +25,7 @@ public interface MedicamentoMapper {
    * @return La entidad Medicamento.
    */
   @Mapping(target = "id", ignore = true)
-  @Mapping(target = "pacientes", ignore = true)
+  @Mapping(target = "prescripciones", ignore = true)
   Medicamento toMedicamento(MedicamentoRequestDTO medicamentoRequestDTO);
 
   /**
@@ -34,7 +34,7 @@ public interface MedicamentoMapper {
    * @param entidad La entidad a actualizar.
    */
   @Mapping(target = "id", ignore = true)
-  @Mapping(target = "pacientes", ignore = true)
+  @Mapping(target = "prescripciones", ignore = true)
   void actualizarEntidadDesdeDto(
     MedicamentoRequestDTO dto,
     @MappingTarget Medicamento entidad

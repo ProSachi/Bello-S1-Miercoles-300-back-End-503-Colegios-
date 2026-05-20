@@ -191,4 +191,54 @@ export const api = {
     });
     return handleResponse(res);
   },
+
+  // --- PRESCRIPCIONES (Prescriptions) ---
+  async getPrescripciones() {
+    const res = await fetch(`${API_BASE_URL}/prescripciones`);
+    return handleResponse(res);
+  },
+
+  async getPrescripcionById(id) {
+    const res = await fetch(`${API_BASE_URL}/prescripciones/${id}`);
+    return handleResponse(res);
+  },
+
+  async getPrescripcionesByPaciente(pacienteId) {
+    const res = await fetch(`${API_BASE_URL}/prescripciones/paciente/${pacienteId}`);
+    return handleResponse(res);
+  },
+
+  async getPrescripcionesByMedico(medicoId) {
+    const res = await fetch(`${API_BASE_URL}/prescripciones/medico/${medicoId}`);
+    return handleResponse(res);
+  },
+
+  async getPrescripcionesByMedicamento(medicamentoId) {
+    const res = await fetch(`${API_BASE_URL}/prescripciones/medicamento/${medicamentoId}`);
+    return handleResponse(res);
+  },
+
+  async createPrescripcion(data) {
+    const res = await fetch(`${API_BASE_URL}/prescripciones`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        medicamentoId: parseInt(data.medicamentoId, 10),
+        pacienteId: parseInt(data.pacienteId, 10),
+        medicoId: parseInt(data.medicoId, 10),
+        dosis: data.dosis,
+        frecuencia: data.frecuencia,
+        duracion: data.duracion,
+        observaciones: data.observaciones
+      }),
+    });
+    return handleResponse(res);
+  },
+
+  async deletePrescripcion(id) {
+    const res = await fetch(`${API_BASE_URL}/prescripciones/${id}`, {
+      method: 'DELETE',
+    });
+    return handleResponse(res);
+  },
 };

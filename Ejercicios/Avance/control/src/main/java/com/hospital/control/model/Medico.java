@@ -21,6 +21,9 @@ public class Medico extends Persona {
     @OneToMany(mappedBy = "medico", cascade = CascadeType.ALL)
     private List<Paciente> pacientes = new ArrayList<>();
 
+    @OneToMany(mappedBy = "medico", cascade = CascadeType.ALL)
+    private List<Prescripcion> prescripciones = new ArrayList<>();
+
     public Medico(String gerencia) {
         this.gerencia = gerencia;
     }
@@ -44,5 +47,13 @@ public class Medico extends Persona {
 
     public void setPacientes(List<Paciente> pacientes) {
         this.pacientes = pacientes;
+    }
+
+    public List<Prescripcion> getPrescripciones() {
+        return prescripciones;
+    }
+
+    public void setPrescripciones(List<Prescripcion> prescripciones) {
+        this.prescripciones = prescripciones;
     }
 }

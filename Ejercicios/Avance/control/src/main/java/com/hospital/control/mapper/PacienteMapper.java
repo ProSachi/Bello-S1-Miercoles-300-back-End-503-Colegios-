@@ -33,7 +33,7 @@ public interface PacienteMapper {
       @Mapping(source = "pacienteRequestDTO.apellido", target = "apellido"),
       @Mapping(source = "medico.id", target = "medico.id"),
       @Mapping(target = "id", ignore = true),
-      @Mapping(target = "medicamentos", ignore = true),
+      @Mapping(target = "prescripciones", ignore = true),
     }
   )
   Paciente toPaciente(
@@ -48,7 +48,7 @@ public interface PacienteMapper {
    */
   @Mapping(target = "id", ignore = true)
   @Mapping(target = "medico", ignore = true)
-  @Mapping(target = "medicamentos", ignore = true)
+  @Mapping(target = "prescripciones", ignore = true)
   void actualizarEntidadDesdeDto(
     PacienteRequestDTO dto,
     @MappingTarget Paciente entidad

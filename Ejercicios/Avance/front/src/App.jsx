@@ -5,6 +5,7 @@ import {
   HeartPulse, 
   User, 
   Pill, 
+  ClipboardList,
   Activity, 
   Plus, 
   Edit, 
@@ -27,6 +28,7 @@ function App() {
   const [enfermeros, setEnfermeros] = useState([]);
   const [pacientes, setPacientes] = useState([]);
   const [medicamentos, setMedicamentos] = useState([]);
+  const [prescripciones, setPrescripciones] = useState([]);
   
   // Health & Loading States
   const [healthStatus, setHealthStatus] = useState({ status: 'UNKNOWN', application: 'Hospital Control API', version: '1.0.0' });
@@ -39,12 +41,16 @@ function App() {
   // Toast notifications state
   const [toasts, setToasts] = useState([]);
   
-  // Selected detail view (for Doctor details, showing their patients)
+  // Selected detail views
   const [selectedMedico, setSelectedMedico] = useState(null);
+  const [medicoPrescripciones, setMedicoPrescripciones] = useState([]);
+  
+  const [selectedPaciente, setSelectedPaciente] = useState(null);
+  const [pacientePrescripciones, setPacientePrescripciones] = useState([]);
   
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalType, setModalType] = useState(''); // 'medico' | 'enfermero' | 'paciente' | 'medicamento'
+  const [modalType, setModalType] = useState(''); // 'medico' | 'enfermero' | 'paciente' | 'medicamento' | 'prescripcion'
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState(null);
   
@@ -55,8 +61,14 @@ function App() {
     gerencia: '',
     especialidad: '',
     medicoId: '',
+    pacienteId: '',
+    medicamentoId: '',
     nombreMedicamento: '',
-    descripcion: ''
+    descripcion: '',
+    dosis: '',
+    frecuencia: '',
+    duracion: '',
+    observaciones: ''
   });
 
   // Load health check status on mount
@@ -72,6 +84,7 @@ function App() {
     fetchActiveTabData();
     setSearchQuery('');
     setSelectedMedico(null);
+    setSelectedPaciente(null);
   }, [activeTab]);
 
   const showToast = (message, type = 'success') => {
@@ -99,17 +112,18 @@ function App() {
     setIsLoading(true);
     try {
       if (activeTab === 'dashboard') {
-        // Load all to update counts
-        const [meds, enf, pacs, drugs] = await Promise.all([
+        const [meds, enf, pacs, drugs, prescs] = await Promise.all([
           api.getMedicos().catch(() => []),
           api.getEnfermeros().catch(() => []),
           api.getPacientes().catch(() => []),
-          api.getMedicamentos().catch(() => [])
+          api.getMedicamentos().catch(() => []),
+          api.getPrescripciones().catch(() => [])
         ]);
         setMedicos(meds);
         setEnfermeros(enf);
         setPacientes(pacs);
         setMedicamentos(drugs);
+        setPrescripciones(prescs);
       } else if (activeTab === 'medicos') {
         const data = await api.getMedicos();
         setMedicos(data);
@@ -117,7 +131,6 @@ function App() {
         const data = await api.getEnfermeros();
         setEnfermeros(data);
       } else if (activeTab === 'pacientes') {
-        // Patients need Medicos list for assigned doctor names
         const [pacs, meds] = await Promise.all([
           api.getPacientes(),
           api.getMedicos().catch(() => [])
@@ -127,6 +140,17 @@ function App() {
       } else if (activeTab === 'medicamentos') {
         const data = await api.getMedicamentos();
         setMedicamentos(data);
+      } else if (activeTab === 'prescripciones') {
+        const [prescs, meds, pacs, drugs] = await Promise.all([
+          api.getPrescripciones(),
+          api.getMedicos().catch(() => []),
+          api.getPacientes().catch(() => []),
+          api.getMedicamentos().catch(() => [])
+        ]);
+        setPrescripciones(prescs);
+        setMedicos(meds);
+        setPacientes(pacs);
+        setMedicamentos(drugs);
       }
     } catch (err) {
       showToast(`Error al cargar datos: ${err.message}`, 'error');
@@ -135,10 +159,42 @@ function App() {
     }
   };
 
-  // Find assigned doctor for a patient
+  // Find assigned doctor for a patient (historical fallback/lookup)
   const getAssignedDoctor = (patientId) => {
     const doctor = medicos.find(m => m.pacientes && m.pacientes.some(p => p.id === patientId));
     return doctor ? `Dr. ${doctor.nombre} ${doctor.apellido}` : 'No asignado';
+  };
+
+  // Detail panel trigger for Medico (loads written prescriptions)
+  const handleSelectMedico = async (medico) => {
+    setSelectedMedico(medico);
+    setSelectedPaciente(null);
+    setIsLoading(true);
+    try {
+      const pm = await api.getPrescripcionesByMedico(medico.id);
+      setMedicoPrescripciones(pm);
+    } catch (err) {
+      setMedicoPrescripciones([]);
+      showToast(`Error al cargar prescripciones del médico: ${err.message}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Detail panel trigger for Paciente (loads active prescriptions)
+  const handleSelectPaciente = async (paciente) => {
+    setSelectedPaciente(paciente);
+    setSelectedMedico(null);
+    setIsLoading(true);
+    try {
+      const pp = await api.getPrescripcionesByPaciente(paciente.id);
+      setPacientePrescripciones(pp);
+    } catch (err) {
+      setPacientePrescripciones([]);
+      showToast(`Error al cargar prescripciones del paciente: ${err.message}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Open Modal Helper
@@ -153,7 +209,6 @@ function App() {
       } else if (type === 'enfermero') {
         setFormData({ nombre: item.nombre, apellido: item.apellido, especialidad: item.especialidad });
       } else if (type === 'paciente') {
-        // Find which doctor they belong to
         const doctor = medicos.find(m => m.pacientes && m.pacientes.some(p => p.id === item.id));
         setFormData({ 
           nombre: item.nombre, 
@@ -165,14 +220,25 @@ function App() {
       }
     } else {
       setEditingId(null);
+      // Pre-populate selectors if available
+      const defaultMedicoId = medicos.length > 0 ? medicos[0].id.toString() : '';
+      const defaultPacienteId = pacientes.length > 0 ? pacientes[0].id.toString() : '';
+      const defaultMedicamentoId = medicamentos.length > 0 ? medicamentos[0].id.toString() : '';
+
       setFormData({
         nombre: '',
         apellido: '',
         gerencia: '',
         especialidad: '',
-        medicoId: medicos.length > 0 ? medicos[0].id.toString() : '',
+        medicoId: defaultMedicoId,
+        pacienteId: defaultPacienteId,
+        medicamentoId: defaultMedicamentoId,
         nombreMedicamento: '',
-        descripcion: ''
+        descripcion: '',
+        dosis: '',
+        frecuencia: '',
+        duracion: '',
+        observaciones: ''
       });
     }
     
@@ -251,6 +317,18 @@ function App() {
           });
           showToast('Medicamento creado con éxito');
         }
+      } else if (modalType === 'prescripcion') {
+        // Prescriptions do not have update mapping in controller, they are immutable recipes.
+        await api.createPrescripcion({
+          medicamentoId: formData.medicamentoId,
+          pacienteId: formData.pacienteId,
+          medicoId: formData.medicoId,
+          dosis: formData.dosis,
+          frecuencia: formData.frecuencia,
+          duracion: formData.duracion,
+          observaciones: formData.observaciones
+        });
+        showToast('Prescripción médica emitida con éxito');
       }
       setIsModalOpen(false);
       fetchActiveTabData();
@@ -278,10 +356,18 @@ function App() {
       } else if (type === 'medicamento') {
         await api.deleteMedicamento(id);
         showToast('Medicamento eliminado con éxito');
+      } else if (type === 'prescripcion') {
+        await api.deletePrescripcion(id);
+        showToast('Prescripción cancelada y eliminada con éxito');
       }
       fetchActiveTabData();
-      if (selectedMedico && selectedMedico.id === id) {
+      
+      // Close active details if the deleted item was selected
+      if (selectedMedico && selectedMedico.id === id && type === 'medico') {
         setSelectedMedico(null);
+      }
+      if (selectedPaciente && selectedPaciente.id === id && type === 'paciente') {
+        setSelectedPaciente(null);
       }
     } catch (err) {
       showToast(`Error al eliminar: ${err.message}`, 'error');
@@ -298,6 +384,7 @@ function App() {
       if (activeTab === 'enfermeros') return enfermeros;
       if (activeTab === 'pacientes') return pacientes;
       if (activeTab === 'medicamentos') return medicamentos;
+      if (activeTab === 'prescripciones') return prescripciones;
       return [];
     }
 
@@ -332,10 +419,38 @@ function App() {
           m.descripcion.toLowerCase().includes(query)
       );
     }
+    if (activeTab === 'prescripciones') {
+      return prescripciones.filter(
+        (p) =>
+          p.nombreMedicamento.toLowerCase().includes(query) ||
+          p.nombrePaciente.toLowerCase().includes(query) ||
+          p.apellidoPaciente.toLowerCase().includes(query) ||
+          p.nombreMedico.toLowerCase().includes(query) ||
+          p.apellidoMedico.toLowerCase().includes(query) ||
+          (p.observaciones && p.observaciones.toLowerCase().includes(query))
+      );
+    }
     return [];
   };
 
   const filteredItems = getFilteredData();
+
+  // Date Formatting Helper
+  const formatPrescriptionDate = (dateString) => {
+    if (!dateString) return 'Sin fecha';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return dateString;
+    }
+  };
 
   return (
     <div className="app-container">
@@ -377,6 +492,12 @@ function App() {
               <span>Medicamentos</span>
             </button>
           </li>
+          <li className={`menu-item ${activeTab === 'prescripciones' ? 'active' : ''}`}>
+            <button onClick={() => setActiveTab('prescripciones')}>
+              <ClipboardList size={18} />
+              <span>Prescripciones</span>
+            </button>
+          </li>
         </nav>
         
         <div className="sidebar-footer">
@@ -401,6 +522,7 @@ function App() {
               {activeTab === 'enfermeros' && 'Gestión de Enfermeros'}
               {activeTab === 'pacientes' && 'Gestión de Pacientes'}
               {activeTab === 'medicamentos' && 'Control de Medicamentos'}
+              {activeTab === 'prescripciones' && 'Prescripciones Médicas'}
             </h1>
             <p className="header-subtitle">
               {activeTab === 'dashboard' && 'Estadísticas y estado de la red hospitalaria.'}
@@ -408,6 +530,7 @@ function App() {
               {activeTab === 'enfermeros' && 'Administre el equipo de enfermería y especialidades.'}
               {activeTab === 'pacientes' && 'Registre nuevos pacientes y asigne su médico tratante.'}
               {activeTab === 'medicamentos' && 'Inventario y descripción de medicamentos autorizados.'}
+              {activeTab === 'prescripciones' && 'Historial de recetas y medicamentos prescritos a pacientes por facultativos.'}
             </p>
           </div>
           
@@ -461,11 +584,21 @@ function App() {
                   <User size={24} />
                 </div>
               </div>
+
+              <div className="card-stat glass-panel" style={{ '--accent-gradient-start': '#ec4899', '--accent-gradient-end': '#db2777' }}>
+                <div className="stat-info">
+                  <div className="stat-value">{prescripciones.length}</div>
+                  <div className="stat-label">Prescripciones Emitidas</div>
+                </div>
+                <div className="stat-icon-wrapper" style={{ color: '#ec4899' }}>
+                  <ClipboardList size={24} />
+                </div>
+              </div>
               
               <div className="card-stat glass-panel" style={{ '--accent-gradient-start': '#f59e0b', '--accent-gradient-end': '#d97706' }}>
                 <div className="stat-info">
                   <div className="stat-value">{medicamentos.length}</div>
-                  <div className="stat-label">Medicamentos en Catálogo</div>
+                  <div className="stat-label">Catálogo Medicamentos</div>
                 </div>
                 <div className="stat-icon-wrapper" style={{ color: '#f59e0b' }}>
                   <Pill size={24} />
@@ -503,28 +636,26 @@ function App() {
 
               <div className="glass-panel data-section">
                 <div className="section-header">
-                  <h2 className="section-title">Pacientes por Médico</h2>
+                  <h2 className="section-title">Últimas Prescripciones</h2>
                 </div>
                 <div className="table-container" style={{ maxHeight: '180px' }}>
-                  {medicos.length === 0 ? (
-                    <p style={{ color: 'var(--text-muted)', padding: '20px 0' }}>No hay médicos registrados.</p>
+                  {prescripciones.length === 0 ? (
+                    <p style={{ color: 'var(--text-muted)', padding: '20px 0' }}>No hay prescripciones registradas.</p>
                   ) : (
                     <table className="custom-table" style={{ fontSize: '0.85rem' }}>
                       <thead>
                         <tr>
-                          <th>Médico</th>
-                          <th>Pacientes</th>
+                          <th>Paciente</th>
+                          <th>Medicamento</th>
+                          <th>Dosis</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {medicos.slice(0, 3).map((m) => (
-                          <tr key={m.id}>
-                            <td>Dr. {m.nombre} {m.apellido}</td>
-                            <td>
-                              <span className="badge badge-success">
-                                {m.pacientes ? m.pacientes.length : 0}
-                              </span>
-                            </td>
+                        {prescripciones.slice(-3).reverse().map((p) => (
+                          <tr key={p.id}>
+                            <td>{p.nombrePaciente} {p.apellidoPaciente}</td>
+                            <td style={{ color: 'var(--primary)', fontWeight: '600' }}>{p.nombreMedicamento}</td>
+                            <td>{p.dosis}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -550,26 +681,28 @@ function App() {
                   placeholder={`Buscar ${
                     activeTab === 'medicos' ? 'médicos' : 
                     activeTab === 'enfermeros' ? 'enfermeros' : 
-                    activeTab === 'pacientes' ? 'pacientes' : 'medicamentos'
+                    activeTab === 'pacientes' ? 'pacientes' : 
+                    activeTab === 'prescripciones' ? 'prescripciones' : 'medicamentos'
                   }...`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
 
-              <button className="btn btn-primary" onClick={() => openModal(activeTab.slice(0, -1))}>
+              <button className="btn btn-primary" onClick={() => openModal({ medicos: 'medico', enfermeros: 'enfermero', pacientes: 'paciente', medicamentos: 'medicamento', prescripciones: 'prescripcion' }[activeTab])}>
                 <Plus size={16} />
                 <span>
                   {activeTab === 'medicos' && 'Nuevo Médico'}
                   {activeTab === 'enfermeros' && 'Nuevo Enfermero'}
                   {activeTab === 'pacientes' && 'Nuevo Paciente'}
                   {activeTab === 'medicamentos' && 'Nuevo Medicamento'}
+                  {activeTab === 'prescripciones' && 'Nueva Prescripción'}
                 </span>
               </button>
             </div>
 
             {/* List and Details Layout */}
-            <div className={selectedMedico && activeTab === 'medicos' ? 'detail-grid' : ''}>
+            <div className={(selectedMedico && activeTab === 'medicos') || (selectedPaciente && activeTab === 'pacientes') ? 'detail-grid' : ''}>
               
               {/* Main table container */}
               <div className="glass-panel table-container">
@@ -606,7 +739,7 @@ function App() {
                             <th>ID</th>
                             <th>Nombre</th>
                             <th>Apellido</th>
-                            <th>Médico Tratante</th>
+                            <th>Médico de Control</th>
                             <th style={{ textAlign: 'right' }}>Acciones</th>
                           </>
                         )}
@@ -618,11 +751,31 @@ function App() {
                             <th style={{ textAlign: 'right' }}>Acciones</th>
                           </>
                         )}
+                        {activeTab === 'prescripciones' && (
+                          <>
+                            <th>ID</th>
+                            <th>Paciente</th>
+                            <th>Médico</th>
+                            <th>Medicamento</th>
+                            <th>Dosis / Frecuencia</th>
+                            <th>Duración</th>
+                            <th>Fecha</th>
+                            <th style={{ textAlign: 'right' }}>Acciones</th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
                       {filteredItems.map((item) => (
-                        <tr key={item.id} style={selectedMedico && selectedMedico.id === item.id ? { backgroundColor: 'rgba(6, 182, 212, 0.05)' } : {}}>
+                        <tr 
+                          key={item.id} 
+                          style={
+                            (selectedMedico && selectedMedico.id === item.id) || 
+                            (selectedPaciente && selectedPaciente.id === item.id) 
+                              ? { backgroundColor: 'rgba(6, 182, 212, 0.05)' } 
+                              : {}
+                          }
+                        >
                           {activeTab === 'medicos' && (
                             <>
                               <td>#{item.id}</td>
@@ -661,27 +814,52 @@ function App() {
                               </td>
                             </>
                           )}
+                          {activeTab === 'prescripciones' && (
+                            <>
+                              <td>#{item.id}</td>
+                              <td style={{ fontWeight: 600 }}>{item.nombrePaciente} {item.apellidoPaciente}</td>
+                              <td>Dr. {item.nombreMedico} {item.apellidoMedico}</td>
+                              <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{item.nombreMedicamento}</td>
+                              <td>
+                                <div style={{ fontSize: '0.9rem' }}>{item.dosis}</div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{item.frecuencia}</div>
+                              </td>
+                              <td>{item.duracion}</td>
+                              <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{formatPrescriptionDate(item.fechaPrescripcion)}</td>
+                            </>
+                          )}
                           <td style={{ textAlign: 'right' }}>
                             <div className="row-actions">
                               {activeTab === 'medicos' && (
                                 <button 
                                   className="action-btn action-btn-edit" 
-                                  title="Ver detalles e historial de pacientes"
-                                  onClick={() => setSelectedMedico(item)}
+                                  title="Ver detalles e historial"
+                                  onClick={() => handleSelectMedico(item)}
                                 >
                                   <Eye size={16} />
                                 </button>
                               )}
-                              <button 
-                                className="action-btn action-btn-edit" 
-                                title="Editar"
-                                onClick={() => openModal(activeTab.slice(0, -1), true, item)}
-                              >
-                                <Edit size={16} />
-                              </button>
+                              {activeTab === 'pacientes' && (
+                                <button 
+                                  className="action-btn action-btn-edit" 
+                                  title="Ver receta activa"
+                                  onClick={() => handleSelectPaciente(item)}
+                                >
+                                  <Eye size={16} />
+                                </button>
+                              )}
+                              {activeTab !== 'prescripciones' && (
+                                <button 
+                                  className="action-btn action-btn-edit" 
+                                  title="Editar"
+                                  onClick={() => openModal({ medicos: 'medico', enfermeros: 'enfermero', pacientes: 'paciente', medicamentos: 'medicamento', prescripciones: 'prescripcion' }[activeTab], true, item)}
+                                >
+                                  <Edit size={16} />
+                                </button>
+                              )}
                               <button 
                                 className="action-btn action-btn-delete" 
-                                title="Eliminar"
+                                title={activeTab === 'prescripciones' ? 'Eliminar Prescripción' : 'Eliminar'}
                                 onClick={() => handleDelete(activeTab.slice(0, -1), item.id)}
                               >
                                 <Trash2 size={16} />
@@ -695,7 +873,7 @@ function App() {
                 )}
               </div>
 
-              {/* Side Detail Card for Doctors (shows patients list) */}
+              {/* Side Detail Card for Doctors (shows their patients & prescriptions written) */}
               {activeTab === 'medicos' && selectedMedico && (
                 <div className="glass-panel detail-info-card" style={{ animation: 'fadeIn var(--transition-fast)' }}>
                   <div className="detail-avatar-section">
@@ -703,7 +881,7 @@ function App() {
                       <Stethoscope size={36} />
                     </div>
                     <div className="detail-name">Dr. {selectedMedico.nombre} {selectedMedico.apellido}</div>
-                    <div className="detail-role">Médico</div>
+                    <div className="detail-role">Médico Control</div>
                   </div>
                   
                   <div className="detail-fields">
@@ -716,19 +894,43 @@ function App() {
                       <span className="detail-field-value">#{selectedMedico.id}</span>
                     </div>
                     
-                    <div className="detail-field" style={{ marginTop: '16px' }}>
-                      <span className="detail-field-label">Pacientes Asignados ({selectedMedico.pacientes ? selectedMedico.pacientes.length : 0})</span>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                    {/* Patients List */}
+                    <div className="detail-field" style={{ marginTop: '12px' }}>
+                      <span className="detail-field-label">Pacientes a Cargo ({selectedMedico.pacientes ? selectedMedico.pacientes.length : 0})</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px', maxHeight: '130px', overflowY: 'auto' }}>
                         {(!selectedMedico.pacientes || selectedMedico.pacientes.length === 0) ? (
                           <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
                             Sin pacientes asignados actualmente
                           </span>
                         ) : (
                           selectedMedico.pacientes.map(p => (
-                            <div key={p.id} style={{ display: 'flex', justifyItems: 'center', gap: '8px', padding: '8px 12px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
-                              <User size={14} style={{ color: 'var(--secondary)', marginTop: '2px' }} />
+                            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
+                              <User size={12} style={{ color: 'var(--secondary)' }} />
                               <span>{p.nombre} {p.apellido}</span>
-                              <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.75rem' }}>#{p.id}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Prescriptions Written List */}
+                    <div className="detail-field" style={{ marginTop: '12px' }}>
+                      <span className="detail-field-label">Prescripciones Emitidas ({medicoPrescripciones.length})</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px', maxHeight: '160px', overflowY: 'auto' }}>
+                        {medicoPrescripciones.length === 0 ? (
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                            No ha recetado medicamentos aún.
+                          </span>
+                        ) : (
+                          medicoPrescripciones.map(pm => (
+                            <div key={pm.id} style={{ padding: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '600' }}>
+                                <span style={{ color: 'var(--primary)' }}>{pm.nombreMedicamento}</span>
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{pm.dosis}</span>
+                              </div>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                Paciente: {pm.nombrePaciente} {pm.apellidoPaciente}
+                              </div>
                             </div>
                           ))
                         )}
@@ -736,11 +938,75 @@ function App() {
                     </div>
                   </div>
                   
-                  <button className="btn btn-secondary btn-sm" style={{ marginTop: '16px' }} onClick={() => setSelectedMedico(null)}>
+                  <button className="btn btn-secondary btn-sm" style={{ marginTop: '12px' }} onClick={() => setSelectedMedico(null)}>
                     Cerrar Detalles
                   </button>
                 </div>
               )}
+
+              {/* Side Detail Card for Patients (shows active prescriptions details) */}
+              {activeTab === 'pacientes' && selectedPaciente && (
+                <div className="glass-panel detail-info-card" style={{ animation: 'fadeIn var(--transition-fast)' }}>
+                  <div className="detail-avatar-section">
+                    <div className="detail-avatar" style={{ background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(236, 72, 153, 0.2) 100%)', color: 'var(--secondary)' }}>
+                      <User size={36} />
+                    </div>
+                    <div className="detail-name">{selectedPaciente.nombre} {selectedPaciente.apellido}</div>
+                    <div className="detail-role">Paciente</div>
+                  </div>
+                  
+                  <div className="detail-fields">
+                    <div className="detail-field">
+                      <span className="detail-field-label">Médico Asignado</span>
+                      <span className="detail-field-value" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                        <Stethoscope size={14} style={{ color: 'var(--primary)' }} />
+                        {getAssignedDoctor(selectedPaciente.id)}
+                      </span>
+                    </div>
+                    <div className="detail-field">
+                      <span className="detail-field-label">ID Sistema</span>
+                      <span className="detail-field-value">#{selectedPaciente.id}</span>
+                    </div>
+                    
+                    {/* Active Prescriptions */}
+                    <div className="detail-field" style={{ marginTop: '12px' }}>
+                      <span className="detail-field-label">Prescripciones / Recetas Activas ({pacientePrescripciones.length})</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px', maxHeight: '220px', overflowY: 'auto' }}>
+                        {pacientePrescripciones.length === 0 ? (
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                            Sin prescripciones de medicamentos activas.
+                          </span>
+                        ) : (
+                          pacientePrescripciones.map(pp => (
+                            <div key={pp.id} style={{ padding: '10px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left' }}>
+                              <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
+                                <span style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '0.9rem' }}>{pp.nombreMedicamento}</span>
+                                <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>{pp.duracion}</span>
+                              </div>
+                              <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                                <span style={{ color: 'var(--text-secondary)' }}>Dosis:</span> {pp.dosis} | <span style={{ color: 'var(--text-secondary)' }}>Frecuencia:</span> {pp.frecuencia}
+                              </div>
+                              {pp.observaciones && (
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '4px', marginTop: '2px', fontStyle: 'italic' }}>
+                                  Obs: {pp.observaciones}
+                                </div>
+                              )}
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'right', marginTop: '2px' }}>
+                                Recetado por: Dr. {pp.nombreMedico} {pp.apellidoMedico}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <button className="btn btn-secondary btn-sm" style={{ marginTop: '12px' }} onClick={() => setSelectedPaciente(null)}>
+                    Cerrar Detalles
+                  </button>
+                </div>
+              )}
+
             </div>
 
           </div>
@@ -753,11 +1019,12 @@ function App() {
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)}
         title={
-          (isEditMode ? 'Editar ' : 'Registrar ') + (
+          (modalType === 'prescripcion' ? 'Emitir Receta Médica' : 
+           (isEditMode ? 'Editar ' : 'Registrar ') + (
             modalType === 'medico' ? 'Médico' : 
             modalType === 'enfermero' ? 'Enfermero' : 
             modalType === 'paciente' ? 'Paciente' : 'Medicamento'
-          )
+          ))
         }
       >
         <form onSubmit={handleFormSubmit}>
@@ -928,6 +1195,132 @@ function App() {
             </>
           )}
 
+          {/* PRESCRIPCION FORM */}
+          {modalType === 'prescripcion' && (
+            <>
+              <div className="form-group">
+                <label className="form-label">Paciente Receptor</label>
+                {pacientes.length === 0 ? (
+                  <p style={{ color: 'var(--danger)', fontSize: '0.85rem', textAlign: 'left' }}>
+                    Debe registrar pacientes en el sistema antes de emitir recetas.
+                  </p>
+                ) : (
+                  <select 
+                    name="pacienteId"
+                    className="form-select" 
+                    required
+                    value={formData.pacienteId}
+                    onChange={handleFormChange}
+                  >
+                    {pacientes.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre} {p.apellido} (ID: #{p.id})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Médico Prescriptor</label>
+                {medicos.length === 0 ? (
+                  <p style={{ color: 'var(--danger)', fontSize: '0.85rem', textAlign: 'left' }}>
+                    Debe registrar médicos en el sistema antes de emitir recetas.
+                  </p>
+                ) : (
+                  <select 
+                    name="medicoId"
+                    className="form-select" 
+                    required
+                    value={formData.medicoId}
+                    onChange={handleFormChange}
+                  >
+                    {medicos.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        Dr. {m.nombre} {m.apellido} ({m.gerencia})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Medicamento a Recetar</label>
+                {medicamentos.length === 0 ? (
+                  <p style={{ color: 'var(--danger)', fontSize: '0.85rem', textAlign: 'left' }}>
+                    Debe agregar medicamentos al catálogo antes de recetar.
+                  </p>
+                ) : (
+                  <select 
+                    name="medicamentoId"
+                    className="form-select" 
+                    required
+                    value={formData.medicamentoId}
+                    onChange={handleFormChange}
+                  >
+                    {medicamentos.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nombreMedicamento} (ID: #{m.id})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div className="form-group">
+                  <label className="form-label">Dosis</label>
+                  <input 
+                    type="text" 
+                    name="dosis"
+                    className="form-input" 
+                    placeholder="Ej. 1 tableta, 500mg"
+                    required
+                    value={formData.dosis}
+                    onChange={handleFormChange}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Frecuencia</label>
+                  <input 
+                    type="text" 
+                    name="frecuencia"
+                    className="form-input" 
+                    placeholder="Ej. Cada 8 horas"
+                    required
+                    value={formData.frecuencia}
+                    onChange={handleFormChange}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Duración del Tratamiento</label>
+                <input 
+                  type="text" 
+                  name="duracion"
+                  className="form-input" 
+                  placeholder="Ej. 7 días, 1 mes"
+                  required
+                  value={formData.duracion}
+                  onChange={handleFormChange}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Observaciones / Instrucciones</label>
+                <textarea 
+                  name="observaciones"
+                  className="form-textarea" 
+                  rows="2"
+                  placeholder="Tomar después de las comidas..."
+                  value={formData.observaciones}
+                  onChange={handleFormChange}
+                ></textarea>
+              </div>
+            </>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
             <button 
               type="button" 
@@ -939,7 +1332,10 @@ function App() {
             <button 
               type="submit" 
               className="btn btn-primary"
-              disabled={modalType === 'paciente' && medicos.length === 0}
+              disabled={
+                (modalType === 'paciente' && medicos.length === 0) ||
+                (modalType === 'prescripcion' && (pacientes.length === 0 || medicos.length === 0 || medicamentos.length === 0))
+              }
             >
               {isEditMode ? 'Actualizar' : 'Guardar'}
             </button>
