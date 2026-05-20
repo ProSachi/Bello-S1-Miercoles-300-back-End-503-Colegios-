@@ -24,6 +24,9 @@ import lombok.RequiredArgsConstructor;
 @RestController
 // @RequestMapping define la ruta base para todos los endpoints de este controlador.
 // Todos los endpoints estarán bajo /api/enfermeros
+//localhost:8080/api/
+
+
 @RequestMapping("/api/enfermeros")
 // @RequiredArgsConstructor genera automáticamente un constructor con las dependencias.
 @RequiredArgsConstructor

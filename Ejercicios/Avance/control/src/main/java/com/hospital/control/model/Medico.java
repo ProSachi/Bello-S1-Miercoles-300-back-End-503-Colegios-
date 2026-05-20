@@ -34,6 +34,10 @@ public class Medico extends Persona {
         return gerencia;
     }
 
+    public void setGerencia(String gerencia) {
+        this.gerencia = gerencia;
+    }
+
     public List<Paciente> getPacientes() {
         return pacientes;
     }
